@@ -19,7 +19,10 @@ public class ExeTask_gdal_translate extends AbstractExeTask {
     }
 
     protected List<String> getArgsFor(LmmpJob lmmpJob) {
-        return Arrays.asList("-of", lmmpJob.getOutputFormat(), //
+        String outputSizePercentageArg = String.valueOf(lmmpJob.getOutputSizePercentage()) + "%";
+
+        return Arrays.asList("-ot", "Byte", "-of", lmmpJob.getOutputFormat(), //
+                "-scale", "-outsize", outputSizePercentageArg, outputSizePercentageArg, //
                 lmmpJob.getJobVrtFile().getAbsolutePath(), //
                 lmmpJob.getJobCompletedFile().getAbsolutePath());
     }

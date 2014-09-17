@@ -1,6 +1,8 @@
 package com.topcoder.nasa.job.hadoop;
 
+import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 
 import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
@@ -12,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.topcoder.nasa.job.LmmpJob;
+import com.topcoder.nasa.job.LmmpJobFiles;
 
 /**
  * Runs the Hadoop Streaming job for the mosaic generation. Note that this class has its roots in a
@@ -26,6 +29,15 @@ public class HadoopJobRunner {
     @Autowired
     private JobClient jobClient;
 
+    @Autowired
+    private LmmpJobFiles lmmpJobFiles;
+
+    @Autowired
+    private HadoopJobFiles hadoopJobFiles;
+
+    /** Legacy handle.sh script path. */
+    private String hadoopHandleScript;
+
     public String executeFor(LmmpJob job) {
         try {
             return doExecuteFor(job);
@@ -39,18 +51,26 @@ public class HadoopJobRunner {
 
         String finalDirectoryName = job.getUuid();
 
-        String[] cli = new String[] { "-mapper", "\"/bin/cat\"",
+        String[] args = new String[] {
+                "-mapper",
+                "\"/bin/cat\"",
                 //
-                "-reducer", "\"/bin/sh /home/hadoop/demo/handle.sh " + finalDirectoryName + "\"",
+                "-reducer",
+                "\"/bin/sh " + hadoopHandleScript + " " + lmmpJobFiles.computePicDirectoryFor(job)
+                        + " " + finalDirectoryName + "\"",
                 //
-                "-input", "/url",
+                "-input", hadoopJobFiles.computeHadoopUrlDirectoryFor(job),
                 //
-                "-output", "/output" };
+                "-output", hadoopJobFiles.computeHadoopOutputDirectoryFor(job) };
 
-        final JobConf jobConf = new StreamJob().createJob(cli);
+        LOG.info("Submission job with args {}", Arrays.asList(args));
 
-        jobConf.set("mapred.cache.files", "/distcache/CustomPartitioner.jar");
-        jobConf.set("mapred.job.classpath.files", "/distcache/CustomPartitioner.jar");
+        final JobConf jobConf = new StreamJob().createJob(args);
+
+        jobConf.set("mapred.cache.files",
+                hadoopJobFiles.computeHadoopCustomerParitionerJarFileNameFor(job));
+        jobConf.set("mapred.job.classpath.files",
+                hadoopJobFiles.computeHadoopCustomerParitionerJarFileNameFor(job));
         jobConf.set("mapred.reduce.tasks.speculative.execution", "false");
         jobConf.set("mapred.task.timeout", "0");
         jobConf.set("mapred.map.tasks", "1");
@@ -81,5 +101,9 @@ public class HadoopJobRunner {
                 }
             }
         }).start();
+    }
+
+    public void setHadoopHandleScript(String hadoopHandleScript) {
+        this.hadoopHandleScript = hadoopHandleScript;
     }
 }

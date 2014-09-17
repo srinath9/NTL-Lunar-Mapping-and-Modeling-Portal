@@ -1,17 +1,13 @@
 package com.topcoder.nasa.job;
 
 import java.io.File;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Queue;
-import java.util.Set;
+import java.util.Date;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.topcoder.nasa.rest.LmmpJobCriteria;
 
 /**
  * Defines a "job" that is created when a generation request is submitted successfully.
@@ -58,8 +54,17 @@ public class LmmpJob {
     /** The Hadoop Job ID for this job */
     private String hadoopJobId;
 
-    /** The output format to pass to gdal_translate for this job. */
-    private String outputFormat;
+    /** The criteria associated with this job. */
+    private LmmpJobCriteria jobCriteria;
+
+    /** The number of images that matches this job's criteria */
+    private Integer numberOfImages;
+
+    /** When this job was created */
+    private Date created;
+
+    /** When this job transitioned into a terminal state */
+    private Date finished;
 
     // =========================================================================
 
@@ -67,29 +72,28 @@ public class LmmpJob {
      * Constructor for creating a <b>new</b> Job that automatically assigns a (random) UUID and sets
      * the job in RUNNING status.
      */
-    public LmmpJob() {
+    public LmmpJob(LmmpJobCriteria jobCriteria) {
         this.uuid = UUID.randomUUID().toString();
         this.status = Status.RUNNING_PDS_API;
+        this.created = new Date();
+        this.jobCriteria = jobCriteria;
 
         LOG.info("Created new Job with uuid {}", uuid);
     }
 
     /**
      * Constructor for creating an <b>existing</b> Job and populating all the fields.
-     * 
-     * @param uuid
-     *            this Job's UUID
-     * @param statusStr
-     *            string representation of this Job's {@link Status}
-     * @param failInfo
      */
     public LmmpJob(String uuid, String statusStr, String hadoopJobId, String failInfo,
-            String outputFormat) {
+            LmmpJobCriteria jobCriteria, Integer numImages, Date created, Date finished) {
         this.status = Status.valueOf(statusStr);
         this.uuid = uuid;
         this.hadoopJobId = hadoopJobId;
         this.failInfo = failInfo;
-        this.outputFormat = outputFormat;
+        this.jobCriteria = jobCriteria;
+        this.numberOfImages = numImages;
+        this.created = created;
+        this.finished = finished;
 
         LOG.debug("Loaded Job with uuid {}, status {} and hadoopJobId {}", uuid, status,
                 hadoopJobId);
@@ -112,6 +116,8 @@ public class LmmpJob {
     public void failed(String failInfo) {
         this.failInfo = failInfo;
         status = Status.FAILED;
+
+        finished = new Date();
     }
 
     public String getFailInfo() {
@@ -120,6 +126,8 @@ public class LmmpJob {
 
     public void completed() {
         status = Status.COMPLETED;
+
+        finished = new Date();
     }
 
     public void killed() {
@@ -141,7 +149,7 @@ public class LmmpJob {
     public File getJobCompletedFile() {
         String fileName = MOSAIC_FILE.replace("{uuid}", uuid);
 
-        fileName = fileName + outputFormat;
+        fileName = fileName + jobCriteria.getOutputFormat();
 
         return new File(fileName);
     }
@@ -156,15 +164,13 @@ public class LmmpJob {
     }
 
     public String getOutputFormat() {
+        String outputFormat = jobCriteria.getOutputFormat();
+
         if (outputFormat == null) {
             outputFormat = DEFAULT_OUTPUT_FORMAT;
         }
 
         return outputFormat;
-    }
-
-    public void setOutputFormat(String outputFormat) {
-        this.outputFormat = outputFormat;
     }
 
     /**
@@ -178,6 +184,30 @@ public class LmmpJob {
         }
 
         return outputFormat;
+    }
+
+    public int getOutputSizePercentage() {
+        return jobCriteria.getOutputSizePercentage();
+    }
+
+    public LmmpJobCriteria getJobCriteria() {
+        return jobCriteria;
+    }
+
+    public Integer getNumberOfImages() {
+        return numberOfImages;
+    }
+
+    public void setNumberOfImages(Integer numberOfImages) {
+        this.numberOfImages = numberOfImages;
+    }
+
+    public Date getCreated() {
+        return created;
+    }
+
+    public Date getFinished() {
+        return finished;
     }
 
     // =========================================================================

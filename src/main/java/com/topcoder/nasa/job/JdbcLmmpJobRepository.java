@@ -4,13 +4,15 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
+import java.sql.Timestamp;
+import java.sql.Types;
+import java.util.Date;
 import java.util.List;
-import java.util.Map;
 
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 
+import org.codehaus.jackson.map.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,8 +28,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.topcoder.nasa.job.LmmpJob.Status;
-
-// CREATE TABLE Job (uuid char(36) primary key, status varchar(20), hadoop_job_id varchar(100), fail_reason varchar(200), output_format varchar(10));
+import com.topcoder.nasa.rest.LmmpJobCriteria;
 
 /**
  * Plain JDBC implementation of a {@link LmmpJobRepository}. </p>Note that this repository takes
@@ -52,13 +53,16 @@ public class JdbcLmmpJobRepository implements LmmpJobRepository {
     @Qualifier("lmmpJdbcTemplate")
     private JdbcTemplate jdbcTemplate;
 
+    private static final ObjectMapper JSON_OBJECT_MAPPER = new ObjectMapper();
+
     // =========================================================================
 
-    private static final String ADD_SQL = "INSERT INTO Job (uuid, status, hadoop_job_id, fail_reason, output_format) VALUES (?,?,?,?,?)";
-    private static final String UPDATE_SQL = "UPDATE Job SET status = ?, hadoop_job_id = ?, fail_reason = ?, output_format = ? WHERE uuid = ?";
-    private static final String LOAD_SQL = "SELECT uuid, status, hadoop_job_id, fail_reason, output_format FROM Job WHERE uuid = ?";
-    private static final String LOAD_RUNNING_HADOOP_JOBS_SQL = "SELECT uuid, status, hadoop_job_id, fail_reason, output_format FROM Job WHERE status = 'RUNNING_HADOOP'";
-    private static final String LOAD_RUNNING_JOBS_SQL = "SELECT uuid, status, hadoop_job_id, fail_reason, output_format FROM Job WHERE status IN ('RUNNING_ODE', 'RUNNING_HADOOP', 'RUNNING_EXECUTABLES')";
+    private static final String ADD_SQL = "INSERT INTO Job (uuid, status, hadoop_job_id, fail_reason, criteria, num_images, created, finished) VALUES (?,?,?,?,?,?,?,?)";
+    private static final String UPDATE_SQL = "UPDATE Job SET status = ?, hadoop_job_id = ?, fail_reason = ?, criteria = ?, num_images = ?, created = ?, finished = ? WHERE uuid = ?";
+    private static final String LOAD_ONE_SQL = "SELECT uuid, status, hadoop_job_id, fail_reason, criteria, num_images, created, finished FROM Job WHERE uuid = ?";
+    private static final String LOAD_ALL_SQL = "SELECT uuid, status, hadoop_job_id, fail_reason, criteria, num_images, created, finished FROM Job";
+    private static final String LOAD_RUNNING_HADOOP_JOBS_SQL = "SELECT uuid, status, hadoop_job_id, fail_reason, criteria, num_images, created, finished FROM Job WHERE status = 'RUNNING_HADOOP'";
+    private static final String LOAD_RUNNING_JOBS_SQL = "SELECT uuid, status, hadoop_job_id, fail_reason, criteria, num_images, created, finished FROM Job WHERE status IN ('RUNNING_PDS_API', 'RUNNING_HADOOP', 'RUNNING_EXECUTABLES')";
 
     // =========================================================================
 
@@ -84,7 +88,22 @@ public class JdbcLmmpJobRepository implements LmmpJobRepository {
                 ps.setString(2, job.getStatus().name());
                 ps.setString(3, job.getHadoopJobId());
                 ps.setString(4, job.getFailInfo());
-                ps.setString(5, job.getOutputFormat());
+                ps.setString(5, getCriteriaJsonFrom(job));
+                ps.setTimestamp(7, new Timestamp(job.getCreated().getTime()));
+
+                Integer numImages = job.getNumberOfImages();
+                if (numImages == null) {
+                    ps.setNull(6, Types.INTEGER);
+                } else {
+                    ps.setInt(6, job.getNumberOfImages());
+                }
+
+                Date finished = job.getFinished();
+                if (finished == null) {
+                    ps.setNull(8, Types.TIMESTAMP);
+                } else {
+                    ps.setTimestamp(8, new Timestamp(finished.getTime()));
+                }
 
                 ps.execute();
 
@@ -106,8 +125,23 @@ public class JdbcLmmpJobRepository implements LmmpJobRepository {
                 ps.setString(1, job.getStatus().name());
                 ps.setString(2, job.getHadoopJobId());
                 ps.setString(3, job.getFailInfo());
-                ps.setString(4, job.getOutputFormat());
-                ps.setString(5, job.getUuid());
+                ps.setString(4, getCriteriaJsonFrom(job));
+                ps.setTimestamp(6, new Timestamp(job.getCreated().getTime()));
+                ps.setString(8, job.getUuid());
+
+                Integer numImages = job.getNumberOfImages();
+                if (numImages == null) {
+                    ps.setNull(5, Types.INTEGER);
+                } else {
+                    ps.setInt(5, job.getNumberOfImages());
+                }
+
+                Date finished = job.getFinished();
+                if (finished == null) {
+                    ps.setNull(7, Types.TIMESTAMP);
+                } else {
+                    ps.setTimestamp(7, new Timestamp(finished.getTime()));
+                }
 
                 ps.execute();
 
@@ -121,8 +155,8 @@ public class JdbcLmmpJobRepository implements LmmpJobRepository {
         LOG.debug("Loading uuid {}", uuid);
 
         try {
-            return jdbcTemplate
-                    .queryForObject(LOAD_SQL, new Object[] { uuid }, LMMP_JOB_ROW_MAPPER);
+            return jdbcTemplate.queryForObject(LOAD_ONE_SQL, new Object[] { uuid },
+                    LMMP_JOB_ROW_MAPPER);
         } catch (EmptyResultDataAccessException e) {
             return null;
         }
@@ -146,29 +180,69 @@ public class JdbcLmmpJobRepository implements LmmpJobRepository {
      * @return the LmmpJob the row represents
      * @throws SQLException
      *             if something went wrong during the parse
+     * @throws IllegalStateException
+     *             if something went wrong during the {@link LmmpJobCriteria} deserialization
      */
     private static LmmpJob createLmmpJobFromRow(ResultSet rs) throws SQLException {
+        LmmpJobCriteria criteria;
+        try {
+            criteria = JSON_OBJECT_MAPPER.readValue(rs.getString(5), LmmpJobCriteria.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("Exception while deserializng LmmpJobCriteria", e);
+        }
+
         return new LmmpJob(rs.getString(1), // uuid
                 rs.getString(2), // status
                 rs.getString(3), // haoop_job_id
                 rs.getString(4), // fail_reason
-                rs.getString(5)); // output_format
+                criteria, // job criteria
+                rs.getInt(6), // number of images
+                rs.getTimestamp(7), // created date
+                rs.getTimestamp(8)); // completed date
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public List<LmmpJob> findAll() {
+        return jdbcTemplate.query(LOAD_ALL_SQL, LMMP_JOB_ROW_MAPPER);
     }
 
     // =========================================================================
 
-    @PostConstruct
     @PreDestroy
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void killAllRunningJobs() {
+    public void killAllNonHadoopRunningJobs() {
+        // get all running jobs
         List<LmmpJob> runningJobs = findRunningJobs();
 
+        // for each job...
         for (LmmpJob job : runningJobs) {
+            // ...if it's running AND in Hadoop - do not kill
+            if (job.getStatus() == Status.RUNNING_HADOOP) {
+                continue;
+            }
+
+            // ...otherwise it's one of the "running" states where it shouldbe killed. 
             LOG.info("Marking job uuid {} as KILLED", job.getUuid());
+            
+            // kill
             job.killed();
+            
+            // save
             update(job);
         }
 
+    }
+
+    private String getCriteriaJsonFrom(final LmmpJob job) {
+        String criteriaJson;
+
+        try {
+            criteriaJson = JSON_OBJECT_MAPPER.writeValueAsString(job.getJobCriteria());
+        } catch (Exception e) {
+            throw new IllegalStateException("Exception while serializing LmmpJobCriteria", e);
+        }
+        return criteriaJson;
     }
 
 }

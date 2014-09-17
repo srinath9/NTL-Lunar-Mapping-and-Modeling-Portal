@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import com.topcoder.nasa.job.LmmpJob;
 import com.topcoder.nasa.job.http.ImageHttpDownloader.ImageHttpDownloaderCallback;
 
 /**
@@ -65,11 +66,11 @@ public class ImageFetcher {
      *            the urls to download
      * @return the target locations on disk, where the images will be downloaded to.
      */
-    public List<File> fetchAll(List<String> allUrls) {
+    public List<File> fetchAll(LmmpJob job, List<String> allUrls) {
         List<File> files = new ArrayList<File>();
 
         for (String url : allUrls) {
-            files.add(fetch(url));
+            files.add(fetch(job, url));
         }
 
         return files;
@@ -82,13 +83,13 @@ public class ImageFetcher {
      *            the url to download
      * @return the target file on disk, where the image will be downloaded to
      */
-    public File fetch(String url) {
+    public File fetch(LmmpJob job, String url) {
         addImageUrlToFetch(url);
         imageCountLeftToFetch.incrementAndGet();
 
-        nudgeDownloader();
+        nudgeDownloader(job);
 
-        return httpDownloader.getCachedFile(url).getAbsoluteFile();
+        return httpDownloader.getCachedFile(job, url).getAbsoluteFile();
     }
 
     /**
@@ -117,7 +118,7 @@ public class ImageFetcher {
     /**
      * The smarts.
      */
-    private void nudgeDownloader() {
+    private void nudgeDownloader(final LmmpJob job) {
         String url = null;
 
         // if the connection is over used (i.e. we have for example 4 images downloading and are
@@ -128,7 +129,7 @@ public class ImageFetcher {
         // pull the next image...
         while ((url = pollImageUrlToFetch()) != null) {
             // ...see if it's already in the cache
-            File cachedFile = httpDownloader.getCachedFile(url);
+            File cachedFile = httpDownloader.getCachedFile(job, url);
 
             if (cachedFile.exists()) {
                 // it is - move on - already downloaded!
@@ -137,16 +138,16 @@ public class ImageFetcher {
             }
 
             // ...it is not already downloaded, let's try and start fetching it into the cache
-            boolean startedFetching = httpDownloader.startFetch(url,
+            boolean startedFetching = httpDownloader.startFetch(job, url,
                     new ImageHttpDownloaderCallback() {
                         public void onImageFetchSuccess(String url, File cacheFile) {
-                            afterImageFetchCallback();
+                            afterImageFetchCallback(job);
                         }
 
                         @Override
                         public void onImageFetchFail(String url) {
                             LOG.error("IMAGE FAILED TO DOWNLOAD {}", url);
-                            afterImageFetchCallback();
+                            afterImageFetchCallback(job);
                         }
 
                     });
@@ -162,9 +163,9 @@ public class ImageFetcher {
         addImageUrlsToFetch(urlsToAddBack);
     }
 
-    private void afterImageFetchCallback() {
+    private void afterImageFetchCallback(LmmpJob job) {
         imageCountLeftToFetch.decrementAndGet();
-        nudgeDownloader();
+        nudgeDownloader(job);
     }
 
     // =========================================================================

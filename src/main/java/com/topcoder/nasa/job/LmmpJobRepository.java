@@ -48,4 +48,11 @@ public interface LmmpJobRepository {
      * @return the running jobs or an empty list if none
      */
     List<LmmpJob> findRunningJobs();
+
+    /**
+     * Returns <b>all</b> the LmmpJobs in the repository. Be careful!
+     * 
+     * @return list of all LmmpJobs in the repository; empty list if none
+     */
+    List<LmmpJob> findAll();
 }

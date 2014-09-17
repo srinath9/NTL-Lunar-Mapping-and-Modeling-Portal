@@ -3,6 +3,8 @@ package com.topcoder.nasa.job.hadoop;
 import java.io.IOException;
 import java.util.List;
 
+import javax.annotation.PostConstruct;
+
 import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.RunningJob;
@@ -11,15 +13,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import com.topcoder.nasa.image.FileSystemImagePreparer;
+import com.topcoder.nasa.job.LmmpJobFileSystemPreparer;
 import com.topcoder.nasa.job.LmmpJob;
 import com.topcoder.nasa.job.LmmpJobRepository;
 
 /**
- * Monitor class that is responsible for checking when Hadoop jobs have completed successfully or failed.
+ * Monitor class that is responsible for checking when Hadoop jobs have completed successfully or
+ * failed.
  * <p/>
- * Note that this class does NOT maintain an "operating context" (i.e. thread). Instead, it expects a third party to
- * call it periodically to start a monitoring iteration. I.e. a timer.
+ * Note that this class does NOT maintain an "operating context" (i.e. thread). Instead, it expects
+ * a third party to call it periodically to start a monitoring iteration. I.e. a timer.
  * 
  */
 @Component
@@ -33,7 +36,10 @@ public class HadoopRunningJobMonitor {
     private JobClient jobClient;
 
     @Autowired
-    private FileSystemImagePreparer fileSystemImagePreparer;
+    private LmmpJobFileSystemPreparer fileSystemImagePreparer;
+
+    @Autowired
+    private HadoopEnvironmentPreparer hadoopEnvironmentPreparer;
 
     private HadoopJobCompletedListener hadoopJobCompletedListener;
 
@@ -63,12 +69,6 @@ public class HadoopRunningJobMonitor {
             return;
         }
 
-        // TEMPORARY GUARD: at the moment we can only support ONE Hadoop job running at a time
-        if (runningJobs.size() > 1) {
-            throw new IllegalStateException(
-                    "Multiple Hadoop jobs are running; right now we only support a single job: " + runningJobs.size());
-        }
-
         // for each job CURRENTLY RUNNING IN HADOOP...
         for (LmmpJob job : runningJobs) {
             LOG.debug("Asking Hadoop for details of hadoop job id {}", job.getHadoopJobId());
@@ -77,8 +77,11 @@ public class HadoopRunningJobMonitor {
             RunningJob rj = jobClient.getJob(JobID.forName(job.getHadoopJobId()));
 
             if (rj == null) {
-                throw new IllegalStateException("Hadoop did not know about hadoop job id " + job.getHadoopJobId()
-                        + " - DB may be out of sync");
+                // mark as killed
+                LOG.info("LmmpJob with uuid {} is marked as running in hadoop, but hadoop doesn't know anything about it - killing the job!");
+                job.killed();
+                lmmpJobRepository.update(job);
+                continue;
             }
 
             // check if completed
@@ -105,10 +108,8 @@ public class HadoopRunningJobMonitor {
                 hadoopJobCompletedListener.onHadoopJobFailure(job, failInfo);
             }
 
-            // TEMPORARY GUARD: when the Hadoop job is complete, clear-down the pic directory
-            if (runningJobs.size() == 1) {
-                fileSystemImagePreparer.cleanPicDirectory();
-            }
+            fileSystemImagePreparer.cleanWorkDirectory(job);
+            hadoopEnvironmentPreparer.cleanDownFor(job);
         }
     }
 

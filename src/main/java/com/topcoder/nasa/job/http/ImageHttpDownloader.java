@@ -7,10 +7,10 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 
-import javax.annotation.PostConstruct;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 import com.ning.http.client.AsyncHandler;
 import com.ning.http.client.AsyncHttpClient;
@@ -18,6 +18,9 @@ import com.ning.http.client.AsyncHttpClientConfig;
 import com.ning.http.client.HttpResponseBodyPart;
 import com.ning.http.client.HttpResponseHeaders;
 import com.ning.http.client.HttpResponseStatus;
+import com.topcoder.nasa.job.LmmpJob;
+import com.topcoder.nasa.job.LmmpJobFiles;
+import com.topcoder.nasa.job.http.ImageHttpDownloader.ImageHttpDownloaderCallback;
 
 /**
  * Responsible for fetching images from a URL and depositing them into {@link #downloadDirectory}.
@@ -26,6 +29,7 @@ import com.ning.http.client.HttpResponseStatus;
  * Multiple requests to the same URL results in undefined (typically bad) behavior.
  *
  */
+@Component
 public class ImageHttpDownloader {
     private static final Logger LOG = LoggerFactory.getLogger(ImageHttpDownloader.class);
 
@@ -63,7 +67,9 @@ public class ImageHttpDownloader {
     // =========================================================================
 
     private AsyncHttpClient httpClient;
-    private File downloadDirectory;
+    
+    @Autowired
+    private LmmpJobFiles lmmpJobFiles;
 
     // =========================================================================
 
@@ -86,17 +92,6 @@ public class ImageHttpDownloader {
     // =========================================================================
 
     /**
-     * Sanity check fields.
-     */
-    @PostConstruct
-    public void init() {
-        if (!downloadDirectory.exists() || !downloadDirectory.isDirectory()) {
-            throw new IllegalStateException("Cache directory " + downloadDirectory
-                    + " does not exist");
-        }
-    }
-
-    /**
      * Clients will want to know if we have already cached the image at a given URL. This method
      * allows them to do that.
      * 
@@ -105,8 +100,8 @@ public class ImageHttpDownloader {
      * @return null if image is not cached already; otherwise, File for the image. <b>WARNING:</b>
      *         this may be a download-in-progress.
      */
-    public File getCachedFile(String imageUrl) {
-        return computeDownloadFile(imageUrl);
+    public File getCachedFile(LmmpJob job, String imageUrl) {
+        return computeDownloadFile(job, imageUrl);
     }
 
     /**
@@ -119,9 +114,9 @@ public class ImageHttpDownloader {
      * @return true if we started to fetch or false if the connection is too busy and the client
      *         needs to send the request for submission again later
      */
-    public boolean startFetch(String imageUrl, ImageHttpDownloaderCallback callback) {
+    public boolean startFetch(LmmpJob job, String imageUrl, ImageHttpDownloaderCallback callback) {
         try {
-            return doStartFetch(imageUrl, callback);
+            return doStartFetch(job, imageUrl, callback);
         } catch (IOException e) {
             throw new IllegalStateException("Exception whilst fetching image", e);
         }
@@ -130,11 +125,11 @@ public class ImageHttpDownloader {
     /**
      * See {@link FileHandler} for more async callback information.
      */
-    private boolean doStartFetch(final String imageUrl, final ImageHttpDownloaderCallback callback)
+    private boolean doStartFetch(final LmmpJob job, final String imageUrl, final ImageHttpDownloaderCallback callback)
             throws IOException {
 
         try {
-            httpClient.prepareGet(imageUrl).execute(new FileHandler(imageUrl, callback));
+            httpClient.prepareGet(imageUrl).execute(new FileHandler(job, imageUrl, callback));
             LOG.info("Downloading {}", imageUrl);
         } catch (IOException e) {
             // if the client reported that there are too many connections open, return false to
@@ -180,7 +175,9 @@ public class ImageHttpDownloader {
         return fileName;
     }
 
-    private File computeDownloadFile(String imageUrl) {
+    private File computeDownloadFile(LmmpJob job, String imageUrl) {
+        File downloadDirectory = lmmpJobFiles.computePicDirectoryFor(job);
+        
         return new File(downloadDirectory, computeFileNameFromUrl(imageUrl));
     }
 
@@ -192,11 +189,6 @@ public class ImageHttpDownloader {
         return false;
     }
 
-    // =========================================================================
-
-    public void setDownloadDirectory(File cacheDirectory) {
-        this.downloadDirectory = cacheDirectory;
-    }
 
     // =========================================================================
 
@@ -226,12 +218,12 @@ public class ImageHttpDownloader {
         private long totalBytesRead;
         private Long fileSize;
 
-        public FileHandler(String url, ImageHttpDownloaderCallback callback)
+        public FileHandler(LmmpJob job, String url, ImageHttpDownloaderCallback callback)
                 throws FileNotFoundException {
             this.url = url;
             this.callback = callback;
 
-            this.file = computeDownloadFile(url);
+            this.file = computeDownloadFile(job, url);
         }
 
         @Override

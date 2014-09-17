@@ -11,9 +11,10 @@ DB Setup
 -------------
 
 1) Create a database in the target MySQL database and run the following create
-   statement:
+   statements:
    
-CREATE TABLE Job (uuid char(36) primary key, status varchar(20), hadoop_job_id varchar(100), fail_reason varchar(200), output_format varchar(10));
+CREATE TABLE Job (uuid char(36) primary key, status varchar(20) not null, hadoop_job_id varchar(100), fail_reason varchar(200), criteria text not null, num_images int, created timestamp not null, finished timestamp null);
+CREATE TABLE JobImageUrl (uuid char(36) not null, url text not null);
 
 ---------------------
 Hadoop Env Setup
@@ -31,6 +32,10 @@ These changes may be made in ~hadoop/.bash_profile -- REMEMBER TO source the
    In the Topcoder VM this should be set to ${HADOOP_HOME}/etc/hadoop, but it
    may (will) vary depending on your local setup, if not running in the VM.
 
+3) Ensure that src/main/sh/handle-parameterized.sh is deployed to 
+   /home/hadoop/demo or your chosen target (see lmmp.properties and
+   hadoop.handle-script)
+
 -------------------------------
 Java properties file setup
 -------------------------------
@@ -44,4 +49,4 @@ Java properties file setup
 2) Set the jdbc.* properties: these establish the connection to the MySQL
    database.
    
-3) The hadoop property is set to run the script above.
+3) Set the Hadoop properties appropriately.

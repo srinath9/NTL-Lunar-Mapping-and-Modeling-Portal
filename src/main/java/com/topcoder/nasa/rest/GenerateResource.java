@@ -1,11 +1,16 @@
 package com.topcoder.nasa.rest;
 
-import gov.nasa.pds.entities.SearchCriteria;
+import gov.nasa.pds.services.DataSetService;
 
+import java.util.List;
+
+import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
+import javax.ws.rs.core.Context;
+import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 import org.slf4j.Logger;
@@ -37,6 +42,9 @@ public class GenerateResource {
     @Autowired
     private LmmpJobWorkflow lmmpJobWorkflow;
 
+    @Autowired
+    private DataSetService dataSetService;
+
     @GET
     @Produces("text/plain")
     public Response nop() {
@@ -47,17 +55,15 @@ public class GenerateResource {
 
     @POST
     @Produces("application/json")
-    public String generate(@SearchCriteriaParam LmmpSearchCriteria searchCriteria) {
+    public Response generate(@LmmpJobCriteriaParam LmmpJobCriteria searchCriteria,
+            @Context HttpServletRequest request) {
         LOG.info("Proessing call to /generate resource");
 
         // create the LmmpJob
-        LmmpJob lmmpJob = new LmmpJob();
+        LmmpJob lmmpJob = new LmmpJob(searchCriteria);
 
         // force use of LRO
         searchCriteria.setUseLRO(true);
-
-        // capture the output format
-        lmmpJob.setOutputFormat(searchCriteria.getOutputFormat());
 
         // start workflow
         lmmpJobWorkflow.startFor(lmmpJob, searchCriteria);
@@ -65,7 +71,26 @@ public class GenerateResource {
         // persist the lmmp job
         lmmpJobRepository.add(lmmpJob);
 
-        return "{ \"trackingId\" : \"" + lmmpJob.getUuid() + "\" }";
+        Response response = Response.status(201)
+                                    .type(MediaType.APPLICATION_JSON)
+                                    .entity("{ \"trackingId\" : \"" + lmmpJob.getUuid() + "\" }")
+                                    .build();
+
+        return response;
+    }
+
+    @GET
+    @Path("/productTypes")
+    @Produces("application/json")
+    public List<String> getProductTypes() {
+        return dataSetService.getAllProductTypes();
+    }
+
+    @GET
+    @Path("/cameraSpecs")
+    @Produces("application/json")
+    public List<String> getCameraSpecs() {
+        return dataSetService.getAllCameraSpecs();
     }
 
 }

@@ -22,13 +22,13 @@ import com.sun.jersey.spi.inject.InjectableProvider;
  * getters and setters.
  */
 @Provider
-public final class SearchCriteriaBeanProvider implements InjectableProvider<SearchCriteriaParam, Parameter> {
-    private static final Logger LOG = LoggerFactory.getLogger(SearchCriteriaBeanProvider.class);
+public final class LmmpJobCriteriaBeanProvider implements InjectableProvider<LmmpJobCriteriaParam, Parameter> {
+    private static final Logger LOG = LoggerFactory.getLogger(LmmpJobCriteriaBeanProvider.class);
 
     @Context
     private final HttpContext hc;
 
-    public SearchCriteriaBeanProvider(@Context HttpContext hc) {
+    public LmmpJobCriteriaBeanProvider(@Context HttpContext hc) {
         this.hc = hc;
     }
 
@@ -38,19 +38,19 @@ public final class SearchCriteriaBeanProvider implements InjectableProvider<Sear
     }
 
     @Override
-    public Injectable<LmmpSearchCriteria> getInjectable(ComponentContext ic, final SearchCriteriaParam a, final Parameter c) {
+    public Injectable<LmmpJobCriteria> getInjectable(ComponentContext ic, final LmmpJobCriteriaParam a, final Parameter c) {
 
         if (SearchCriteria.class != c.getParameterClass()) {
             return null;
         }
 
-        return new Injectable<LmmpSearchCriteria>() {
+        return new Injectable<LmmpJobCriteria>() {
 
-            public LmmpSearchCriteria getValue() {
+            public LmmpJobCriteria getValue() {
                 String json = hc.getRequest().getEntity(String.class);
 
                 try {
-                    return new org.codehaus.jackson.map.ObjectMapper().readValue(json, LmmpSearchCriteria.class);
+                    return new org.codehaus.jackson.map.ObjectMapper().readValue(json, LmmpJobCriteria.class);
                 } catch (Exception e) {
                     throw new IllegalStateException("Unable to unmarshal payload as LmmpSearchCriteria");
                 }

@@ -26,7 +26,7 @@ public class HadoopWorkflow {
     private HadoopJobRunner hadoopJobRunner;
 
     public void executeFor(LmmpJob job) {
-        boolean cleanedUp = hadoopEnvironmentPreparer.go();
+        boolean cleanedUp = hadoopEnvironmentPreparer.prepareFor(job);
         
         if (!cleanedUp) {
             job.failed("Could not connect to HDFS");

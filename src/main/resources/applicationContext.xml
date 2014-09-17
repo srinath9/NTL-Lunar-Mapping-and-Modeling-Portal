@@ -39,6 +39,10 @@
 		<constructor-arg ref="hadoopConfiguration" />
 	</bean>
 
+	<bean id="hadoopEnvironmentPreparer" class="com.topcoder.nasa.job.hadoop.HadoopEnvironmentPreparer">
+		<property name="fileSystem" ref="hdfsFileSystem" />
+	</bean>
+
 	<!-- FileSystem fileSystem = FileSystem.get(new Configuration()); -->
 
 	<!-- LMMP DB -->
@@ -85,11 +89,6 @@
 		</property>
 	</bean>
 
-	<bean id="fileSystemImagePreparer" class="com.topcoder.nasa.image.FileSystemImagePreparer">
-		<property name="partFile" value="${hadoop.job.part-file}" />
-	   	<property name="picDirectory" value="${hadoop.job.pic-job-directory}" />
-	</bean>
-
 	<bean id="logger" class="com.topcoder.util.log.log4j.Log4jLog">
 		<constructor-arg index="0" value="gov.nasa.pds" />
 		<constructor-arg index="1" value="false" />
@@ -114,8 +113,16 @@
 		<property name="logger" ref="logger" />
 		<property name="jdbcTemplate" ref="pdsJdbcTemplate" />
 	</bean>
-	
-	<bean class="com.topcoder.nasa.job.http.ImageHttpDownloader">
-	   	<property name="downloadDirectory" value="${hadoop.job.pic-job-directory}" />
+
+	<bean id="hadoopJobFiles" class="com.topcoder.nasa.job.hadoop.HadoopJobFiles">
+		<property name="customPartitionerJar" value="${hadoop.custom-partitioner-jar-file}" />
+	</bean>
+
+	<bean id="lmmpJobFiles" class="com.topcoder.nasa.job.LmmpJobFiles">
+		<property name="localWorkDirectory" value="${hadoop.job.local-work-directory}" />
+	</bean>
+
+	<bean id="hadoopJobRunner" class="com.topcoder.nasa.job.hadoop.HadoopJobRunner">
+		<property name="hadoopHandleScript" value="${hadoop.handle-script}" />
 	</bean>
 </beans>

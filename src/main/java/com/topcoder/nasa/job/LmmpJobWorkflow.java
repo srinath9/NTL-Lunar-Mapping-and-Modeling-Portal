@@ -22,7 +22,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import com.topcoder.nasa.file.S3FileUploader;
-import com.topcoder.nasa.image.FileSystemImagePreparer;
 import com.topcoder.nasa.image.ImageFetcherTask;
 import com.topcoder.nasa.job.binary.AggregateExeTask;
 import com.topcoder.nasa.job.binary.ExeTaskCompletedListener;
@@ -35,26 +34,26 @@ import com.topcoder.nasa.job.http.ImageFetcher;
 import com.topcoder.nasa.rest.GenerateResource;
 
 /**
- * The job workflow. We could use a state machine and/or workflow engine and/or some other stuff, but this workflow is
- * simple enough for now. Here's the lowdown:
+ * The job workflow. We could use a state machine and/or workflow engine and/or some other stuff,
+ * but this workflow is simple enough for now. Here's the lowdown:
  * <p/>
  * <ul>
- * <li>When the (singleton) instance is fully constracted, the {@link #init()} method is called to associate itself with
- * the {@link HadoopRunningJobMonitor}</li>
- * <li>When a request to {@link GenerateResource} comes in, we query ODE and ask it to tell us about all the images that
- * match the {@link OdeSearchCriteria} the client passed in</li>
- * <li>The ODE request takes a long time and may require pagination so we do this asynchronously - this is the job of
- * the {@link OdeServiceTask}</li>
- * <li>As ODE pages come back, we schedule the images that they refer to to be fetched into the image cache using the
- * {@link ImageFetcherTask}</li>
- * <li>Once all the images have been fetched into the image cache for a job, we use the {@link FileSystemImagePreparer}
- * to prepare the filesystem to start the Hadoop job</li>
+ * <li>When the (singleton) instance is fully constracted, the {@link #init()} method is called to
+ * associate itself with the {@link HadoopRunningJobMonitor}</li>
+ * <li>When a request to {@link GenerateResource} comes in, we query ODE and ask it to tell us about
+ * all the images that match the {@link OdeSearchCriteria} the client passed in</li>
+ * <li>The ODE request takes a long time and may require pagination so we do this asynchronously -
+ * this is the job of the {@link OdeServiceTask}</li>
+ * <li>As ODE pages come back, we schedule the images that they refer to to be fetched into the
+ * image cache using the {@link ImageFetcherTask}</li>
+ * <li>Once all the images have been fetched into the image cache for a job, we use the
+ * {@link LmmpJobFileSystemPreparer} to prepare the filesystem to start the Hadoop job</li>
  * <li>Then, we start the Hadoop job</li>
  * <li>When a Hadoop job completes, one of {@link #onHadoopJobSuccessful(LmmpJob)} /
  * {@link #onHadoopJobFailure(LmmpJob, String)} is called</li>
  * <li>If the job fails, we stop doing anything more</li>
- * <li>Else, we launch the {@link #exeTask}, which is actually an {@link AggregateExeTask} of all the executables we
- * need to run for this workflow.</li>
+ * <li>Else, we launch the {@link #exeTask}, which is actually an {@link AggregateExeTask} of all
+ * the executables we need to run for this workflow.</li>
  * <li>Once the {@link AggregateExeTask} tells us it has completed, we upload the file to S3</li>
  * <li>Then we're done</li>
  * </ul>
@@ -74,13 +73,16 @@ public class LmmpJobWorkflow implements HadoopJobCompletedListener, ExeTaskCompl
     private LmmpJobRepository lmmpJobRepository;
 
     @Autowired
+    private LmmpJobImageUrlRepository lmmpJobImageUrlRepository;
+
+    @Autowired
     private HadoopRunningJobMonitor hadoopRunningJobMonitor;
 
     @Autowired
     private S3FileUploader fileUploader;
 
     @Autowired
-    private FileSystemImagePreparer fileSystemImagePreparer;
+    private LmmpJobFileSystemPreparer fileSystemImagePreparer;
 
     @Autowired
     private HadoopWorkflow hadoopWorkflow;
@@ -96,7 +98,8 @@ public class LmmpJobWorkflow implements HadoopJobCompletedListener, ExeTaskCompl
     // =========================================================================
 
     /**
-     * Associate ourselves with the {@link HadoopRunningJobMonitor} and creates the {@link #exeTask} .
+     * Associate ourselves with the {@link HadoopRunningJobMonitor} and creates the {@link #exeTask}
+     * .
      */
     @PostConstruct
     public void init() {
@@ -125,16 +128,11 @@ public class LmmpJobWorkflow implements HadoopJobCompletedListener, ExeTaskCompl
      *             if an {@link LmmpJob} is already currently running
      */
     public void startFor(final LmmpJob job, final SearchCriteria searchCriteria) {
-        List<LmmpJob> currentlyRunningJobs = lmmpJobRepository.findRunningJobs();
-        if (!currentlyRunningJobs.isEmpty()) {
-            throw new IllegalStateException("Cannot run more than one job. Currently running: " + currentlyRunningJobs);
-        }
-
         WORKFLOW_EXECUTION_THREADPOOL.submit(new Runnable() {
             public void run() {
                 try {
                     doStartFor(job, searchCriteria);
-                } catch (DataSetProcessingException e) {
+                } catch (Exception e) {
                     LOG.error("Exception thrown while processing job id {}", job.getUuid(), e);
 
                     job.failed(e.getMessage());
@@ -145,8 +143,8 @@ public class LmmpJobWorkflow implements HadoopJobCompletedListener, ExeTaskCompl
     }
 
     /**
-     * Synchronously executes the first "part" of an LMMP job workflow: the {@link DataSetService} querying and the
-     * Hadoop scheduling.
+     * Synchronously executes the first "part" of an LMMP job workflow: the {@link DataSetService}
+     * querying and the Hadoop scheduling.
      * 
      * @param job
      *            the job to start processing
@@ -155,7 +153,8 @@ public class LmmpJobWorkflow implements HadoopJobCompletedListener, ExeTaskCompl
      * @throws DataSetProcessingException
      *             if something went wrong finding the map images of interest
      */
-    private void doStartFor(final LmmpJob job, SearchCriteria searchCriteria) throws DataSetProcessingException {
+    private void doStartFor(final LmmpJob job, SearchCriteria searchCriteria)
+            throws DataSetProcessingException {
         LOG.info("Computing which images to use for job id {}", job.getUuid());
         List<String> allUrls = computeImagePaths(searchCriteria);
 
@@ -165,7 +164,14 @@ public class LmmpJobWorkflow implements HadoopJobCompletedListener, ExeTaskCompl
             return;
         }
 
-        List<File> allFiles = imageFetcher.fetchAll(allUrls);
+        // set the image urls and save
+        job.setNumberOfImages(allUrls.size());
+        lmmpJobRepository.update(job);
+
+        // persist the URLs
+        lmmpJobImageUrlRepository.setImageUrls(job, allUrls);
+
+        List<File> allFiles = imageFetcher.fetchAll(job, allUrls);
 
         while (imageFetcher.isFetching()) {
             try {
@@ -176,8 +182,8 @@ public class LmmpJobWorkflow implements HadoopJobCompletedListener, ExeTaskCompl
             }
         }
 
-        LOG.info("Computing requisite images for job {}; starting to copy them...", job.getUuid());
-        fileSystemImagePreparer.prepare(allFiles);
+        LOG.info("Creating part file for job {}", job.getUuid());
+        fileSystemImagePreparer.createPartFileFor(job, allFiles);
 
         LOG.info("Images copied! Starting Hadoop job...");
         hadoopWorkflow.executeFor(job);
@@ -186,9 +192,9 @@ public class LmmpJobWorkflow implements HadoopJobCompletedListener, ExeTaskCompl
     }
 
     /**
-     * Uses our {@link #dataSetService} to find work out which {@link MapImage}s are of interest to the given
-     * {@link SearchCriteria}, and subsequently asks the {@link DataSetService} to fetch all the paths to those images.
-     * The image paths are the URLs we then need to download.
+     * Uses our {@link #dataSetService} to find work out which {@link MapImage}s are of interest to
+     * the given {@link SearchCriteria}, and subsequently asks the {@link DataSetService} to fetch
+     * all the paths to those images. The image paths are the URLs we then need to download.
      * 
      * @param searchCriteria
      *            the criteria that each MapImage must meet
@@ -196,7 +202,8 @@ public class LmmpJobWorkflow implements HadoopJobCompletedListener, ExeTaskCompl
      * @throws DataSetProcessingException
      *             if something went wrong fetching the data
      */
-    private List<String> computeImagePaths(SearchCriteria searchCriteria) throws DataSetProcessingException {
+    private List<String> computeImagePaths(SearchCriteria searchCriteria)
+            throws DataSetProcessingException {
         int nextPage = 1;
 
         List<String> allUrls = new ArrayList<String>();
@@ -207,7 +214,8 @@ public class LmmpJobWorkflow implements HadoopJobCompletedListener, ExeTaskCompl
             Page page = new Page(nextPage, MAP_IMAGES_PER_PAGE);
 
             // get this page of identifiers (of MapImage entities) of interest
-            PagedResults<EntityInfo> results = dataSetService.searchMapImagesByCriteria(searchCriteria, page);
+            PagedResults<EntityInfo> results = dataSetService.searchMapImagesByCriteria(
+                    searchCriteria, page);
 
             List<String> paths = dataSetService.getMapImagePaths(results.getResults());
 
