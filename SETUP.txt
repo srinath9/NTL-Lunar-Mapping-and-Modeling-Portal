@@ -36,6 +36,25 @@ These changes may be made in ~hadoop/.bash_profile -- REMEMBER TO source the
    /home/hadoop/demo or your chosen target (see lmmp.properties and
    hadoop.handle-script)
 
+
+----------------------
+ISIS Env Setup
+----------------------
+
+These changes may be made in .bash_profile -- REMEMBER to source the file after adding these variables
+
+These env variables assume ISIS is installed properly on the VM
+
+1) Ensure that ISISROOT is set in the environment
+
+   This should be the directory of isis installation
+
+2) Make isis3Startup.sh executable - run this command
+
+. $ISISROOT/scripts/isis3Startup.sh
+
+3) Append "$ISISROOT/3rdParty/lib" to PATH environment variable
+
 -------------------------------
 Java properties file setup
 -------------------------------
@@ -49,4 +68,4 @@ Java properties file setup
 2) Set the jdbc.* properties: these establish the connection to the MySQL
    database.
    
-3) Set the Hadoop properties appropriately.
+3) Set the Hadoop, custom partitioner, isis and moon map  properties appropriately.

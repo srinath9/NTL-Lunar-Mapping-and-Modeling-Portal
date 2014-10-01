@@ -22,7 +22,7 @@ public class S3FileUrlCreator extends AbstractS3FileManager implements Initializ
 
     public String generateUrlFor(LmmpJob job) {
         Date now = new Date();
-        Date fiveMinsFromNow = new Date(now.getTime() + 300000);
+        Date fiveMinsFromNow = new Date(now.getTime() + 86400000);
 
         String key = S3FileConstants.computeKey(job);
 

@@ -1,7 +1,9 @@
 imagePath=$1
-scriptPath='/home/hadoop/demo/run.sh'
-mapPath='/home/hadoop/demo/moon.map'
+scriptPath=$3
+mapPath=$4
+
 #############
+
 echo "$@ task id $mapred_task_id" >> /tmp/params
 
 me=$mapred_task_id
@@ -30,3 +32,11 @@ fi
 done
 echo 5 sh $scriptPath $path $output $mapPath  >> /tmp/status
 sh $scriptPath $path $output $mapPath
+
+## This code is needed for clustering
+rm -fr $output/*.cub
+ssh master0 "mkdir $output"
+scp $output/* master0:$output
+rm -fr $output
+rm -fr $path
+echo 'OK'

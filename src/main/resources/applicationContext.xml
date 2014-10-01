@@ -124,5 +124,7 @@
 
 	<bean id="hadoopJobRunner" class="com.topcoder.nasa.job.hadoop.HadoopJobRunner">
 		<property name="hadoopHandleScript" value="${hadoop.handle-script}" />
+                <property name="isisRunScript" value="${isis.run-script}" />
+                <property name="moonMapFile" value="${isis.moon-map}" />
 	</bean>
 </beans>

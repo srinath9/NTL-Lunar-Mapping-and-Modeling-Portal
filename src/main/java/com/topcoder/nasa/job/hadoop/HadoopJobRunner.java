@@ -38,6 +38,12 @@ public class HadoopJobRunner {
     /** Legacy handle.sh script path. */
     private String hadoopHandleScript;
 
+    /** Legacy isis run script path */
+    private String isisRunScript;
+
+    /** Moon Map file path */
+    private String moonMapFile;
+
     public String executeFor(LmmpJob job) {
         try {
             return doExecuteFor(job);
@@ -57,7 +63,7 @@ public class HadoopJobRunner {
                 //
                 "-reducer",
                 "\"/bin/sh " + hadoopHandleScript + " " + lmmpJobFiles.computePicDirectoryFor(job)
-                        + " " + finalDirectoryName + "\"",
+                        + " " + finalDirectoryName + " " + isisRunScript  + " " + moonMapFile + "\"",
                 //
                 "-input", hadoopJobFiles.computeHadoopUrlDirectoryFor(job),
                 //
@@ -103,7 +109,16 @@ public class HadoopJobRunner {
         }).start();
     }
 
+    public void setIsisRunScript(String isisRunScript) {
+        this.isisRunScript = isisRunScript;
+    }
+
+    public void setMoonMapFile(String moonMapFile) {
+        this.moonMapFile = moonMapFile;
+    }
+
     public void setHadoopHandleScript(String hadoopHandleScript) {
         this.hadoopHandleScript = hadoopHandleScript;
     }
+
 }
